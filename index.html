@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <title>ChatGPT chatbot</title>
+    <link rel="stylesheet" href="./asset/css/import.css">
+</head>
+
+<body>
+    <form id="chat-form" autocomplete="off">
+        <h3>相談したいことを入力してね</h3>
+        <textarea name="" id="chat-input" cols="30" rows="10" placeholder="相談内容を入力してEnterで送信"></textarea><br>
+        <input type="submit">
+        <!-- <input type="text" id="chat-input" placeholder="質問を入力してEnterで送信" /> -->
+        <div id="chat-window">
+            <pre id="chat-history"></pre>
+        </div>
+    </form>
+</body>
+
+</html>
+<script>
+
+    // API Keyとmodelを設定
+    const apiKey = '';
+    const modelType = 'gpt-3.5-turbo';
+    const url = 'https://api.openai.com/v1/chat/completions';
+
+    let messageHistory = [];
+
+    async function appendAssistantResponse(assistantMessage) {
+        messageHistory.push(
+            { 'role': 'assistant', 'content': assistantMessage }
+        );
+    }
+    $('#chat-form').on('submit', async function (event) {
+        event.preventDefault();
+        const questionToMessage = $('#chat-input').val() + 'に対して、深く深く内省を促す機会になる質問を、哲学的な内容で３つ作成してほしい。';
+        const userMessage = $('#chat-input').val();
+        $('#chat-history').append('<p class="you">' + userMessage + '</p>');
+
+        messageHistory.push({ 'role': 'user', 'content': questionToMessage });
+        console.table(messageHistory);
+
+
+        console.table(messageHistory[1]);
+
+        const formData = $(this).serialize();
+        console.log(formData);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiKey,
+            },
+            body: JSON.stringify({
+                model: modelType,
+                stream: true,
+                messages: messageHistory,
+            }),
+        });
+
+
+        if (!response.ok) {
+            console.error('Error:', await response.text());
+            return;
+        }
+
+        $("#chat-input").val("");
+        $("#chat-input").focus();
+
+        const reader = response.body.getReader();
+        const textDecoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+
+            const { value, done } = await reader.read();
+
+            if (done) {
+                break;
+            }
+
+            buffer += textDecoder.decode(value, { stream: true });
+
+            while (true) {
+                const newlineIndex = buffer.indexOf('\n');
+                if (newlineIndex === -1) {
+                    break;
+                }
+
+                const line = buffer.slice(0, newlineIndex);
+                buffer = buffer.slice(newlineIndex + 1);
+
+                if (line.startsWith('data:')) {
+
+                    if (line.includes('[DONE]')) {
+                        $('#chat-history').append('<hr>');
+                        return;
+                    }
+
+                    const jsonData = JSON.parse(line.slice(5));
+
+
+                    if (jsonData.choices && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                        const assistantMessage = jsonData.choices[0].delta.content;
+
+                        $('#chat-history').append('' + assistantMessage + '');
+                        await appendAssistantResponse(assistantMessage);
+                    }
+
+                }
+
+            }
+        }
+    });
+</script>
